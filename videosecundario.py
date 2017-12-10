@@ -12,17 +12,25 @@ def main(args):
         "--ip", "-i", action="store", help="Dirección IP donde se escuchará", default='0.0.0.0'
     )
     parser.add_argument(
-        "--puerto", "-p", action="store", help="Puerto donde se escuchará", default=50001,
+        "--puerto", "-p", action="store", help="Puerto donde se escuchará", default=50000,
         type=int
     )
     parser.add_argument(
-        "--ip-maestro", action='store', help='Dirección IP del servidor central', required=True
+        "--ip-maestro", action='store', help='Dirección IP del servidor central',
+        default="localhost"
     )
     parser.add_argument(
         "--puerto-maestro", action='store', help='Puerto donde escucha el servidor central',
-        required=True, type=int
+        default=5000, type=int
     )
-    parser.parse_args(args=args[1:])
+    parser.add_argument(
+        "--numero", "-n", action='store', help='Numero del servidor (1-3)', required=True,
+        type=int
+    )
+    pargs = parser.parse_args(args=args[1:])
+    if pargs.numero not in (1, 2, 3):
+        print("El numero del servidor es invalido.")
+        sys.exit()
 
 
 if __name__ == '__main__':

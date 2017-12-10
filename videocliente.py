@@ -5,15 +5,11 @@ import json
 
 
 class Cliente():
-    def __init__(self, ip, puerto):
+    def __init__(self, ip, puerto, ip_central, puerto_central):
         self.ip = ip
         self.puerto = puerto
-
-    def msg_send(self, msg):
-        server = socket.socket()
-        server.connect((self.ip, self.puerto))
-        server.sendall((json.dumps(msg) + '\n').encode())
-        server.close()
+        self.ip_central = ip_central
+        self.puerto_central = puerto_central
 
 
 def main(args):
@@ -23,18 +19,19 @@ def main(args):
                      "Proyecto de Redes II, Septiembre-Diciembre 2017, USB.")
     )
     parser.add_argument(
-        "--ip", "-i", action="store", help="Dirección IP donde se escuchará", default='localhost'
+        "--ip", "-i", action="store", help="Dirección IP donde se escuchará", default='0.0.0.0'
     )
     parser.add_argument(
-        "--puerto", "-p", action="store", help="Puerto donde se escuchará", default=50000,
+        "--puerto", "-p", action="store", help="Puerto donde se escuchará", default=50004,
         type=int
     )
     parser.add_argument(
-        "--ip-maestro", action='store', help='Dirección IP del servidor central', required=True
+        "--ip-central", action='store', help='Dirección IP del servidor central',
+        default="localhost"
     )
     parser.add_argument(
-        "--puerto-maestro", action='store', help='Puerto donde escucha el servidor central',
-        required=True, type=int
+        "--puerto-central", action='store', help='Puerto donde escucha el servidor central',
+        default=5000, type=int
     )
     pargs = parser.parse_args(args=args[1:])
     cliente = Cliente(pargs.ip, pargs.puerto)
