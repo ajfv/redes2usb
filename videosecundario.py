@@ -21,6 +21,8 @@ class ServidorSecundario(servidorbase.ServidorBase):
         self.ip_c = ip_central
         self.puerto_c = puerto_central
         self.lock = threading.Lock()
+        self.descargando = set()
+        self.descargando_lock = threading.Lock()
         self.MENSAJES = {  # mensajes y sus respectivos manejadores
             'sincronizacion': self.sincronizacion,
             'descarga': self.descarga
@@ -81,13 +83,18 @@ class ServidorSecundario(servidorbase.ServidorBase):
         else:
             with open(os.path.join(self.video_folder, video), mode='rb') as f:
                 data = f.read(1024)
+                with self.descargando_lock:
+                    self.descargando.add(video)
                 while data:
                     handler.wfile.write(data)
                     data = f.read(1024)
+                with self.descargando_lock:
+                    self.descargando.discard(video)
 
     def command_handler(self, command, arg):
         if command.upper() == "VIDEOS_DESCARGANDO":
-            print("por implementar")
+            with self.descargando_lock:
+                print(list(self.descargando))
         elif command.upper() == "VIDEOS_DESCARGADOS":
             with self.lock:
                 print('video|descargas')
