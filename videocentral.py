@@ -85,7 +85,8 @@ class ServidorCentral(servidorbase.ServidorBase):
         if not sinc:
             self.msg_send([], handler.request)
         else:
-            self.msg_send(self.videos, handler.request)
+            # Set is not JSON serializable, it must be converted to list.
+            self.msg_send(list(self.videos), handler.request)
 
     def descarga(self, msg, handler):
         with self.lock:

@@ -48,7 +48,25 @@ class Cliente():
                 print("Falta parametro: INSCRIBIR <nombre>")
             else:
                 self.nombre = arg
+        elif command.upper() == "LISTA_VIDEOS":
+            self.listar_videos()
+        else:
+            print("Comando no reconocido: {}".format(command))
 
+    def listar_videos(self):
+        try:
+            socket_central = socket.socket()
+            socket_central.connect((self.ip_central, self.puerto_central))
+            ServidorBase.msg_send({"accion": "listado"}, socket_central)
+            lista_videos = bytearray()
+            data = socket_central.recv(1024)
+            while len(data) > 0:
+                lista_videos.extend(data)
+                data = socket_central.recv(1024)
+            socket_central.close()
+            print("Los videos disponibles para descargar son: \n {}".format(lista_videos.decode("utf-8")))
+        except:
+            print("No se pudo establecer conexión con el servidor central")
 
 def main(args):
     parser = argparse.ArgumentParser(
