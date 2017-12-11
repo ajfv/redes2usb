@@ -4,6 +4,7 @@ import servidorbase
 import os
 import threading
 import socket
+import os.path
 
 
 class ServidorSecundario(servidorbase.ServidorBase):
@@ -29,10 +30,10 @@ class ServidorSecundario(servidorbase.ServidorBase):
         "Se envia el mensaje de inscripcion al servidor. Si el envio falla, se acaba el programa"
         try:
             socket_dest = socket.socket()
-            ip, puerto = self.server.server_address
+            _, puerto = self.server.server_address
             socket_dest.connect((self.ip_c, self.puerto_c))
             inscripcion = {
-                "accion": "inscripcion", "ip": ip, "puerto": puerto,
+                "accion": "inscripcion", "puerto": puerto,
                 "videos": list(self.data.keys())
                 }
             self.msg_send(inscripcion, socket_dest)
@@ -51,10 +52,38 @@ class ServidorSecundario(servidorbase.ServidorBase):
             operacion(msg, handler)
 
     def sincronizacion(self, msg, handler):
-        pass
+        for s in msg['servidores']:
+            with self.lock:
+                videos = set(s['videos']).difference(set(self.data.keys()))
+                for v in videos:
+                    socket_dest = socket.socket()
+                    socket_dest.connect((s["ip"], s["puerto"]))
+                    self.msg_send({"accion": "descarga", "video": v}, socket_dest)
+                    with open(os.path.join(self.video_folder, v), mode='wb') as f:
+                        data = socket_dest.recv(1024)
+                        while len(data) > 0:
+                            f.write(data)
+                            data = socket_dest.recv(1024)
+                    socket_dest.close()
+                    self.data[v] = 0
+                socket_central = socket.socket()
+                socket_central.connect((self.ip_c, self.puerto_c))
+                self.msg_send({
+                    "accion": "sincronizacion", "puerto": self.server.server_address[1],
+                    "videos": list(videos)
+                    }, socket_central)
+                socket_central.close()
 
     def descarga(self, msg, handler):
-        pass
+        video = msg["video"]
+        if "parte" in msg:
+            pass
+        else:
+            with open(os.path.join(self.video_folder, video), mode='rb') as f:
+                data = f.read(1024)
+                while data:
+                    handler.wfile.write(data)
+                    data = f.read(1024)
 
     def command_handler(self, command, arg):
         if command.upper() == "VIDEOS_DESCARGANDO":

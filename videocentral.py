@@ -16,7 +16,7 @@ class ServidorCentral(servidorbase.ServidorBase):
         self.secundarios = {}
         self.lock = threading.Lock()
         self.sinc = False
-        self.videos = []
+        self.videos = set()
         self.MENSAJES = {  # mensajes y sus respectivos manejadores
             'inscripcion': self.inscripcion,
             'sincronizacion': self.sincronizacion,
@@ -43,10 +43,10 @@ class ServidorCentral(servidorbase.ServidorBase):
                 self.secundarios[handler.client_address] = msg['videos']
                 return
             nuevo_videos = msg["videos"]
-            nuevo_serv = (msg["ip"], msg["puerto"])
+            nuevo_serv = (handler.client_address[0], msg["puerto"])
             resp = {nuevo_serv: []}
             # Se arma el contenido de los mensajes de sincronizacion
-            for server, videos in self.secundarios:
+            for server, videos in self.secundarios.items():
                 resp[nuevo_serv].append({
                     "ip": server[0], "puerto": server[1], "videos": videos
                 })
@@ -56,6 +56,7 @@ class ServidorCentral(servidorbase.ServidorBase):
             # Se registran los nuevos videos en el servidor central
             self.secundarios[nuevo_serv] = nuevo_videos
             for v in nuevo_videos:
+                self.videos.add(v)
                 if v not in self.data['videos']:
                     self.data['videos'][v] = 0
         # envio de los mensajes de sincronizacion
@@ -70,12 +71,13 @@ class ServidorCentral(servidorbase.ServidorBase):
         with self.lock:
             if self.sinc:
                 return
-            self.secundarios[handler.client_address].append(msg['videos'])
-            print('Servidor %s descargo videos "%s"' % (
-                str((msg["ip"], msg["puerto"])), msg['video']))
-            if all(len(v) == len(self.videos) for _, v in self.secundarios) and \
+            self.secundarios[(handler.client_address[0], msg["puerto"])].extend(msg['videos'])
+            print('Servidor %s sincronizo videos "%s"' % (
+                str((handler.client_address[0], msg["puerto"])), msg['videos']), end="\n> ")
+            if all(len(v) == len(self.videos) for _, v in self.secundarios.items()) and \
                len(self.secundarios) == 3:
                 self.sinc = True
+                print("Sincronizacion completa", end="\n> ")
 
     def listado(self, msg, handler):
         with self.lock:
