@@ -178,9 +178,9 @@ class Cliente():
 
     def _descarga_parte(self, salida, parte, video, servidores):
         "Descarga de una parte. Se intentan todos los servidores hasta que uno funciona, o se falla"
-        for i in [0, 1, 2]:
+        for i in range(len(servidores)):
             # Primero se establece la conexion
-            servidor = servidores[(parte + i) % 3]
+            servidor = servidores[(parte + i) % len(servidores)]
             print("Descargando video %s, trozo %d, desde servidor %s" % (
                     video, parte, servidor["ip"] + str(servidor["puerto"])))
             mensaje_fallo = "Fallo descarga de video %s, trozo %d, desde servidor %s:%d" % (
