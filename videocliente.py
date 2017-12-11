@@ -49,11 +49,19 @@ class Cliente():
             else:
                 self.nombre = arg
         elif command.upper() == "LISTA_VIDEOS":
-            self.listar_videos()
+            self._lista_videos()
+        elif command.upper() == "VIDEO":
+            if arg is None:
+                print("Falta parametro: VIDEO <nombre>")
+            else:
+                self._video(arg)
         else:
             print("Comando no reconocido: {}".format(command))
 
-    def listar_videos(self):
+    def _lista_videos(self):
+        """ Pregunta al servidor central cuál es la lista de videos para descargar
+        """
+        print("Preguntando al servidor central cuáles son los videos disponibles...")
         try:
             socket_central = socket.socket()
             socket_central.connect((self.ip_central, self.puerto_central))
@@ -64,9 +72,39 @@ class Cliente():
                 lista_videos.extend(data)
                 data = socket_central.recv(1024)
             socket_central.close()
-            print("Los videos disponibles para descargar son: \n {}".format(lista_videos.decode("utf-8")))
+            print("  ... los videos disponibles para descargar son: \n   {}".format(lista_videos.decode("utf-8")))
         except:
-            print("No se pudo establecer conexión con el servidor central")
+            print("  ... no se pudo establecer conexión con el servidor central")
+
+    def _video(self, nombre):
+        ocurrio_error = False
+        print("Preguntando al servidor central dónde descargar el video")
+        try:
+            socket_central = socket.socket()
+            socket_central.connect((self.ip_central, self.puerto_central))
+            ServidorBase.msg_send({"accion": "descarga", "video": nombre}, socket_central)
+            respuesta = bytearray()
+            data = socket_central.recv(1024)
+            while len(data) > 0:
+                respuesta.extend(data)
+                data = socket_central.recv(1024)
+            socket_central.close()
+            respuesta = json.loads(respuesta.decode("utf-8"))
+        except:
+            print("  ... No se pudo establecer conexión con el servidor central")
+            ocurrio_error = True
+
+        if not ocurrio_error:
+            if respuesta['resultado'] == "espera":
+                print("  ... El servidor central no se ha sincronizado. Intente más tarde")
+
+            elif respuesta['resultado'] == "no hallado":
+                print("  ... El video no existe.")
+
+            elif respuesta['resultado'] == "hallado":
+                print("  ... El servidor posee el video. En breve empezará la descarga")
+                servidores = respuesta['servidores']
+
 
 def main(args):
     parser = argparse.ArgumentParser(

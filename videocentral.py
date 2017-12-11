@@ -94,7 +94,7 @@ class ServidorCentral(servidorbase.ServidorBase):
             encontrado = msg['video'] in self.videos
             servidores = []
             if sinc and encontrado:
-                for servidor, _ in self.secundarios:
+                for servidor, _ in self.secundarios.items():
                     servidores.append({'ip': servidor[0], 'puerto': servidor[1]})
             resp = {'servidores': servidores}
         if not sinc:
