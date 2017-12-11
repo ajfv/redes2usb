@@ -22,7 +22,8 @@ class ServidorCentral(servidorbase.ServidorBase):
             'sincronizacion': self.sincronizacion,
             'listado': self.listado,
             'descarga': self.descarga,
-            'completado': self.completado
+            'completado': self.completado,
+            'caido': self.caido
         }
 
     def setup(self):
@@ -33,7 +34,7 @@ class ServidorCentral(servidorbase.ServidorBase):
         try:
             operacion = self.MENSAJES[msg['accion']]
         except:
-            print('Se recibio mensaje mal formado desde ' + str(handler.client_address), end='\n> ')
+            print('Se recibio mensaje mal formado desde ' + str(handler.client_address))
         else:
             operacion(msg, handler)
 
@@ -42,6 +43,10 @@ class ServidorCentral(servidorbase.ServidorBase):
         with self.lock:
             if self.sinc:  # esto ocurre si un servidor caido se esta levantando
                 self.secundarios[(handler.client_address[0], msg['puerto'])] = msg['videos']
+                print(
+                    "Se recupero conexion con el servidor secundario %s:%d" % (
+                        handler.client_address[0], msg['puerto'])
+                )
                 return
             nuevo_videos = msg["videos"]
             nuevo_serv = (handler.client_address[0], msg["puerto"])
@@ -74,11 +79,11 @@ class ServidorCentral(servidorbase.ServidorBase):
                 return
             self.secundarios[(handler.client_address[0], msg["puerto"])].extend(msg['videos'])
             print('Servidor %s sincronizo videos "%s"' % (
-                str((handler.client_address[0], msg["puerto"])), msg['videos']), end="\n> ")
+                str((handler.client_address[0], msg["puerto"])), msg['videos']))
             if all(len(v) == len(self.videos) for _, v in self.secundarios.items()) and \
                len(self.secundarios) == 3:
                 self.sinc = True
-                print("Sincronizacion completa", end="\n> ")
+                print("Sincronizacion completa")
 
     def listado(self, msg, handler):
         with self.lock:
@@ -113,7 +118,12 @@ class ServidorCentral(servidorbase.ServidorBase):
                 self.data['clientes'][msg['nombre']] += 1
             else:
                 self.data['clientes'][msg['nombre']] = 1
-        print("El cliente %s descargo el video %s" % (msg['nombre'], msg['video']), end='\n> ')
+        print("El cliente %s descargo el video %s" % (msg['nombre'], msg['video']))
+
+    def caido(self, msg, handler):
+        with self.lock:
+            del self.secundarios[(msg["ip"], msg['puerto'])]
+        print("Se perdio conexion con el servidor secundario %s:%d" % (msg["ip"], msg["puerto"]))
 
     def command_handler(self, command, arg):
         if command.upper() == "NUMERO_DESCARGAS_VIDEO":

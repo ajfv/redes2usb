@@ -15,6 +15,7 @@ class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
 
 def direccion_ip(string):
+    "Funcion que valida direcciones IP"
     if string.lower() != 'localhost' and re.fullmatch(IP_PATTERN, string) is None:
         msg = "%s no es una direccion IP valida" % string
         raise argparse.ArgumentTypeError(msg)
@@ -32,8 +33,15 @@ class ServidorBase(metaclass=abc.ABCMeta):
     """
 
     def __init__(self, ip, puerto, data_file):
-        "Constructor de la clase, crea el objeto servidor y lee los datos guardados"
+        """ Constructor de la clase, crea el objeto servidor y lee los datos guardados
+            ip: ip donde se escuchara
+            puerto: puerto donde se escuchara
+            data_file: nombre del archivo para persistencia
+        """
         class _Handler(socketserver.StreamRequestHandler):
+            """ Clase que procesa los mensajes recibidos por el servidor
+                Para ver sus atributos, buscar documentacion online de StreamRequestHandler
+            """
             def handle(this):
                 try:
                     msg = json.loads(this.rfile.readline().decode())
@@ -50,11 +58,15 @@ class ServidorBase(metaclass=abc.ABCMeta):
 
     @classmethod
     def msg_send(self, msg, socket):
+        "Funcion auxiliar para enviar un mensaje JSON por un socket conectado"
         socket.sendall((json.dumps(msg) + '\n').encode())
 
     @abc.abstractmethod
     def msg_handler(self, msg, handler):
-        "Implementar este método para manejar los mensajes que recibe el servidor"
+        """ Implementar este método para manejar los mensajes que recibe el servidor.
+            msg: diccionario, JSON recibido en el mensaje
+            handler: instancia de _Handler
+        """
         pass
 
     @abc.abstractmethod
@@ -73,7 +85,7 @@ class ServidorBase(metaclass=abc.ABCMeta):
         "Método que lee instrucciones desde la línea de comandos"
         while True:
             try:
-                text = input("> ")
+                text = input()
             except EOFError:
                 signal.pthread_kill(threading.main_thread().ident, signal.SIGTERM)
                 return

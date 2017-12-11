@@ -51,7 +51,7 @@ class ServidorSecundario(servidorbase.ServidorBase):
         try:
             operacion = self.MENSAJES[msg['accion']]
         except:
-            print('Se recibio mensaje mal formado desde ' + str(handler.client_address), end='\n> ')
+            print('Se recibio mensaje mal formado desde ' + str(handler.client_address))
         else:
             operacion(msg, handler)
 
@@ -100,8 +100,8 @@ class ServidorSecundario(servidorbase.ServidorBase):
                 else:
                     with self.lock:
                         self.data[video] += 1
-                    print("Cliente %s descargo trozo %d de video %s" %(
-                        msg['nombre'], msg['parte'], video), end='\n> ')
+                    print("Cliente %s descargo trozo %d de video %s" % (
+                        msg['nombre'], msg['parte'], video))
                 finally:
                     with self.descargando_lock:
                         self.descargando.discard(video)

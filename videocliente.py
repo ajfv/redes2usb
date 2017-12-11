@@ -35,7 +35,7 @@ class Cliente():
         signal.signal(signal.SIGTERM, signal_handler)
         while True:
             try:
-                text = input("> ")
+                text = input()
             except EOFError:
                 return
             splitted = text.split(' ')
@@ -43,6 +43,20 @@ class Cliente():
                 self.command_handler(splitted[0], None)
             elif len(splitted) > 1:
                 self.command_handler(splitted[0], splitted[1])
+
+    def caido(self, servidor):
+        try:
+            central = socket.socket()
+            central.connect((self.ip_central, self.puerto_central))
+            ServidorBase.msg_send(
+                {"accion": "caido", 'ip': servidor['ip'], 'puerto': servidor['puerto']},
+                central
+            )
+            central.close()
+        except:
+            return "No se logro notificar al servidor central"
+        else:
+            return "Se le notifico al servidor central"
 
     def command_handler(self, command, arg):
         if command.upper() == "INSCRIBIR":
@@ -127,14 +141,14 @@ class Cliente():
         for i in range(3):
             resultado.append(q.get())
             if not resultado[-1][0]:
-                print("Fallo la descarga del video %s" % video, end='\n> ')
+                print("Fallo la descarga del video %s" % video)
                 return
         resultado.sort(key=lambda x: x[1])
         with open(video, mode='wb') as f:
             for a, b, temp in resultado:
                 shutil.copyfileobj(temp, f)
                 temp.close()
-        print("Se completo la descarga del video %s" % video, end="\n> ")
+        print("Se completo la descarga del video %s" % video)
         try:
             central = socket.socket()
             central.connect((self.ip_central, self.puerto_central))
@@ -143,14 +157,14 @@ class Cliente():
             )
             central.close()
         except:
-            print("No pudo notificarse al servidor central", end="\n> ")
+            print("No pudo notificarse al servidor central")
 
     def _descarga_parte(self, salida, parte, video, servidores):
         for i in [0, 1, 2]:
             # Primero se establece la conexion
             servidor = servidores[(parte + i) % 3]
             print("Descargando video %s, trozo %d, desde servidor %s" % (
-                    video, parte, servidor["ip"] + str(servidor["puerto"])), end='\n> ')
+                    video, parte, servidor["ip"] + str(servidor["puerto"])))
             mensaje_fallo = "Fallo descarga de video %s, trozo %d, desde servidor %s:%d" % (
                 video, parte, servidor['ip'], servidor['puerto']
             )
@@ -163,7 +177,7 @@ class Cliente():
                     conexion
                 )
             except Exception as e:
-                print(mensaje_fallo, end='\n> ')
+                print(mensaje_fallo + "\n" + self.caido(servidor))
                 continue
 
             # Luego se descarga el tamaño. (Esto esta basado en los docs de python)
@@ -178,7 +192,7 @@ class Cliente():
                     recibido += len(trozo)
                 tam = struct.unpack("!i", b''.join(trozos))[0]
             except Exception as e:
-                print(mensaje_fallo, end='\n> ')
+                print(mensaje_fallo + "\n" + self.caido(servidor))
                 continue
 
             # Finalmente se descarga el video y se guarda en un archivo temporal
@@ -193,12 +207,12 @@ class Cliente():
                     temp.write(trozo)
             except Exception as e:
                 temp.close()
-                print(mensaje_fallo, end='\n> ')
+                print(mensaje_fallo + "\n" + self.caido(servidor))
                 continue
             else:
                 temp.seek(0, 0)
                 salida.put((True, parte, temp))
-                print("Descarga exitosa de video %s, trozo %d" % (video, parte), end="\n> ")
+                print("Descarga exitosa de video %s, trozo %d" % (video, parte))
                 return
         salida.put((False, parte, None))
 
