@@ -5,12 +5,14 @@ import socket
 import json
 import threading
 from servidorbase import ServidorBase
+import queue
+import shutil
+import struct
+import tempfile
 
 
 class Cliente():
-    def __init__(self, ip, puerto, ip_central, puerto_central):
-        self.ip = ip
-        self.puerto = puerto
+    def __init__(self, ip_central, puerto_central):
         self.ip_central = ip_central
         self.puerto_central = puerto_central
         self._nombre = None
@@ -55,55 +57,150 @@ class Cliente():
                 print("Falta parametro: VIDEO <nombre>")
             else:
                 self._video(arg)
+        elif command.upper() in ['H', 'HELP']:
+            print('INSCRIBIR <nombre>')
+            print('LISTA_VIDEOS')
+            print('VIDEO <nombre>')
         else:
             print("Comando no reconocido: {}".format(command))
+
+    def msg_read(self, socket):
+        buffer = bytearray()
+        data = socket.recv(1024)
+        while len(data) > 0:
+            buffer.extend(data)
+            data = socket.recv(1024)
+        return json.loads(buffer.decode('utf-8'))
 
     def _lista_videos(self):
         """ Pregunta al servidor central cuál es la lista de videos para descargar
         """
-        print("Preguntando al servidor central cuáles son los videos disponibles...")
         try:
             socket_central = socket.socket()
             socket_central.connect((self.ip_central, self.puerto_central))
             ServidorBase.msg_send({"accion": "listado"}, socket_central)
-            lista_videos = bytearray()
-            data = socket_central.recv(1024)
-            while len(data) > 0:
-                lista_videos.extend(data)
-                data = socket_central.recv(1024)
+            lista_videos = self.msg_read(socket_central)
             socket_central.close()
-            print("  ... los videos disponibles para descargar son: \n   {}".format(lista_videos.decode("utf-8")))
+            print("Videos disponibles:")
+            for v in lista_videos:
+                print(v)
         except:
-            print("  ... no se pudo establecer conexión con el servidor central")
+            print("No se pudo establecer conexión con el servidor central")
 
     def _video(self, nombre):
-        ocurrio_error = False
-        print("Preguntando al servidor central dónde descargar el video")
+        if self.nombre is None:
+            print("Debes inscribir un nombre primero")
+            return
         try:
             socket_central = socket.socket()
             socket_central.connect((self.ip_central, self.puerto_central))
             ServidorBase.msg_send({"accion": "descarga", "video": nombre}, socket_central)
-            respuesta = bytearray()
-            data = socket_central.recv(1024)
-            while len(data) > 0:
-                respuesta.extend(data)
-                data = socket_central.recv(1024)
+            respuesta = self.msg_read(socket_central)
             socket_central.close()
-            respuesta = json.loads(respuesta.decode("utf-8"))
         except:
-            print("  ... No se pudo establecer conexión con el servidor central")
-            ocurrio_error = True
+            print("No se pudo establecer conexión con el servidor central")
+            return
 
-        if not ocurrio_error:
-            if respuesta['resultado'] == "espera":
-                print("  ... El servidor central no se ha sincronizado. Intente más tarde")
+        if respuesta['resultado'] == "espera":
+            print("Los servidores no se ha sincronizado. Intente más tarde")
+        elif respuesta['resultado'] == "no hallado":
+            print("El video no existe.")
+        elif respuesta['resultado'] == "hallado":
+            print("Video hallado. En breve empezará la descarga")
+            descarga = threading.Thread(
+                target=self._descarga, args=(nombre, respuesta['servidores']), daemon=True
+            )
+            descarga.start()
 
-            elif respuesta['resultado'] == "no hallado":
-                print("  ... El video no existe.")
+    def _descarga(self, video, servidores):
+        q = queue.Queue()
+        threads = []
+        for parte in [0, 1, 2]:
+            t = threading.Thread(
+                target=self._descarga_parte, args=(q, parte, video, servidores)
+            )
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+        resultado = []
+        for i in range(3):
+            resultado.append(q.get())
+            if not resultado[-1][0]:
+                print("Fallo la descarga del video %s" % video, end='\n> ')
+                return
+        resultado.sort(key=lambda x: x[1])
+        with open(video, mode='wb') as f:
+            for a, b, temp in resultado:
+                shutil.copyfileobj(temp, f)
+                temp.close()
+        print("Se completo la descarga del video %s" % video, end="\n> ")
+        try:
+            central = socket.socket()
+            central.connect((self.ip_central, self.puerto_central))
+            ServidorBase.msg_send(
+                {"accion": "completado", "nombre": self.nombre, "video": video}, central
+            )
+            central.close()
+        except:
+            print("No pudo notificarse al servidor central", end="\n> ")
 
-            elif respuesta['resultado'] == "hallado":
-                print("  ... El servidor posee el video. En breve empezará la descarga")
-                servidores = respuesta['servidores']
+    def _descarga_parte(self, salida, parte, video, servidores):
+        for i in [0, 1, 2]:
+            # Primero se establece la conexion
+            servidor = servidores[(parte + i) % 3]
+            print("Descargando video %s, trozo %d, desde servidor %s" % (
+                    video, parte, servidor["ip"] + str(servidor["puerto"])), end='\n> ')
+            mensaje_fallo = "Fallo descarga de video %s, trozo %d, desde servidor %s:%d" % (
+                video, parte, servidor['ip'], servidor['puerto']
+            )
+            try:
+
+                conexion = socket.socket()
+                conexion.connect((servidor['ip'], servidor['puerto']))
+                ServidorBase.msg_send(
+                    {"accion": "descarga", "nombre": self.nombre, "parte": parte, "video": video},
+                    conexion
+                )
+            except Exception as e:
+                print(mensaje_fallo, end='\n> ')
+                continue
+
+            # Luego se descarga el tamaño. (Esto esta basado en los docs de python)
+            try:
+                recibido = 0
+                trozos = []
+                while recibido < 4:
+                    trozo = conexion.recv(4 - recibido)
+                    if trozo == b'':
+                        raise RuntimeError("Socket 1")
+                    trozos.append(trozo)
+                    recibido += len(trozo)
+                tam = struct.unpack("!i", b''.join(trozos))[0]
+            except Exception as e:
+                print(mensaje_fallo, end='\n> ')
+                continue
+
+            # Finalmente se descarga el video y se guarda en un archivo temporal
+            temp = tempfile.TemporaryFile()
+            try:
+                recibido = 0
+                while recibido < tam:
+                    trozo = conexion.recv(min(tam - recibido, 2048))
+                    if trozo == b'':
+                        raise RuntimeError("Socket 2")
+                    recibido += len(trozo)
+                    temp.write(trozo)
+            except Exception as e:
+                temp.close()
+                print(mensaje_fallo, end='\n> ')
+                continue
+            else:
+                temp.seek(0, 0)
+                salida.put((True, parte, temp))
+                print("Descarga exitosa de video %s, trozo %d" % (video, parte), end="\n> ")
+                return
+        salida.put((False, parte, None))
 
 
 def main(args):
@@ -113,22 +210,15 @@ def main(args):
                      "Proyecto de Redes II, Septiembre-Diciembre 2017, USB.")
     )
     parser.add_argument(
-        "--ip", "-i", action="store", help="Dirección IP donde se escuchará", default='0.0.0.0'
-    )
-    parser.add_argument(
-        "--puerto", "-p", action="store", help="Puerto donde se escuchará", default=50004,
-        type=int
-    )
-    parser.add_argument(
         "--ip-central", action='store', help='Dirección IP del servidor central',
         default="localhost"
     )
     parser.add_argument(
         "--puerto-central", action='store', help='Puerto donde escucha el servidor central',
-        default=5000, type=int
+        default=50000, type=int
     )
     pargs = parser.parse_args(args=args[1:])
-    cliente = Cliente(pargs.ip, pargs.puerto, pargs.ip_central, pargs.puerto_central)
+    cliente = Cliente(pargs.ip_central, pargs.puerto_central)
     cliente.run()
 
 

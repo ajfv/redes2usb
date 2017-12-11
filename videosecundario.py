@@ -5,6 +5,7 @@ import os
 import threading
 import socket
 import os.path
+import struct
 
 
 class ServidorSecundario(servidorbase.ServidorBase):
@@ -79,9 +80,32 @@ class ServidorSecundario(servidorbase.ServidorBase):
 
     def descarga(self, msg, handler):
         video = msg["video"]
-        if "parte" in msg:
-            pass
-        else:
+        if "parte" in msg:  # descarga por partes desde el cliente
+            path = os.path.join(self.video_folder, video)
+            tam = os.path.getsize(path)
+            comienzo = (tam // 3)*msg["parte"]
+            por_enviar = tam // 3 + (tam % 3 if msg["parte"] == 2 else 0)
+            with open(path, mode='rb') as f:
+                f.seek(comienzo, 0)
+                with self.descargando_lock:
+                    self.descargando.add(msg["video"])
+                try:
+                    handler.wfile.write(struct.pack("!i", por_enviar))
+                    while por_enviar > 0:
+                        data = f.read(1024)
+                        handler.wfile.write(data)
+                        por_enviar = por_enviar - 1024
+                except Exception as e:
+                    print("Descarga fallida. Cliente %s, video %s." % (msg['nombre'], video))
+                else:
+                    with self.lock:
+                        self.data[video] += 1
+                    print("Cliente %s descargo trozo %d de video %s" %(
+                        msg['nombre'], msg['parte'], video), end='\n> ')
+                finally:
+                    with self.descargando_lock:
+                        self.descargando.discard(video)
+        else:  # descarga para sincronizacion
             with open(os.path.join(self.video_folder, video), mode='rb') as f:
                 data = f.read(1024)
                 with self.descargando_lock:
@@ -101,6 +125,9 @@ class ServidorSecundario(servidorbase.ServidorBase):
                 print('video|descargas')
                 for nombre, veces in self.data.items():
                     print("%s|%d" % (nombre, veces))
+        elif command.upper() in ['H', 'HELP']:
+            print('VIDEOS_DESCARGANDO')
+            print('VIDEOS_DESCARGADOS')
         else:
             print("Comando no reconocido")
 

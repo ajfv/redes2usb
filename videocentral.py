@@ -21,7 +21,8 @@ class ServidorCentral(servidorbase.ServidorBase):
             'inscripcion': self.inscripcion,
             'sincronizacion': self.sincronizacion,
             'listado': self.listado,
-            'descarga': self.descarga
+            'descarga': self.descarga,
+            'completado': self.completado
         }
 
     def setup(self):
@@ -40,7 +41,7 @@ class ServidorCentral(servidorbase.ServidorBase):
         handler.request.close()  # las respuestas se envian a los puertos especificados
         with self.lock:
             if self.sinc:  # esto ocurre si un servidor caido se esta levantando
-                self.secundarios[handler.client_address] = msg['videos']
+                self.secundarios[(handler.client_address[0], msg['puerto'])] = msg['videos']
                 return
             nuevo_videos = msg["videos"]
             nuevo_serv = (handler.client_address[0], msg["puerto"])
@@ -105,6 +106,15 @@ class ServidorCentral(servidorbase.ServidorBase):
             resp['resultado'] = 'no hallado'
         self.msg_send(resp, handler.request)
 
+    def completado(self, msg, handler):
+        with self.lock:
+            self.data['videos'][msg['video']] += 1
+            if msg['nombre'] in self.data['clientes']:
+                self.data['clientes'][msg['nombre']] += 1
+            else:
+                self.data['clientes'][msg['nombre']] = 1
+        print("El cliente %s descargo el video %s" % (msg['nombre'], msg['video']), end='\n> ')
+
     def command_handler(self, command, arg):
         if command.upper() == "NUMERO_DESCARGAS_VIDEO":
             with self.lock:
@@ -116,6 +126,9 @@ class ServidorCentral(servidorbase.ServidorBase):
                 print('cliente|descargas')
                 for nombre, veces in self.data['clientes'].items():
                     print("%s|%d" % (nombre, veces))
+        elif command.upper() in ['H', 'HELP']:
+            print('NUMERO_DESCARGAS_VIDEO')
+            print('VIDEOS_CLIENTE')
         else:
             print("Comando no reconocido")
 
