@@ -61,6 +61,13 @@ class ServidorBase(metaclass=abc.ABCMeta):
         "Implementar este método para manejar los comandos"
         pass
 
+    @abc.abstractmethod
+    def setup(self):
+        """ Metodo que se ejecuta luego de iniciar el servidor, pero antes de iniciar la interfaz
+            de comando, para cualquier inicializacion automatica que requiera recibir mensajes
+        """
+        pass
+
     def command_line_interface(self):
         "Método que lee instrucciones desde la línea de comandos"
         while True:
@@ -76,6 +83,7 @@ class ServidorBase(metaclass=abc.ABCMeta):
             El hilo principal se detiene, esperando por ctrl-c
         """
         def signal_handler(signal, frame):
+            self.server.shutdown()
             self.server.server_close()
             with open(self.data_file, mode='w') as f:
                 json.dump(self.data, f)
@@ -86,6 +94,7 @@ class ServidorBase(metaclass=abc.ABCMeta):
         server_t = threading.Thread(target=self.server.serve_forever, daemon=True)
         cli_t = threading.Thread(target=self.command_line_interface, daemon=True)
         server_t.start()
+        self.setup()
         print(msg)
         cli_t.start()
         signal.pause()

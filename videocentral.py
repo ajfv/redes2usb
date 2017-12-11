@@ -2,6 +2,7 @@ import sys
 import argparse
 import servidorbase
 import threading
+import socket
 
 
 class ServidorCentral(servidorbase.ServidorBase):
@@ -23,6 +24,9 @@ class ServidorCentral(servidorbase.ServidorBase):
             'descarga': self.descarga
         }
 
+    def setup(self):
+        pass
+
     def msg_handler(self, msg, handler):
         "Manejador general, que escoge el especifico dependiendo del tipo de mensaje"
         try:
@@ -33,23 +37,42 @@ class ServidorCentral(servidorbase.ServidorBase):
             operacion(msg, handler)
 
     def inscripcion(self, msg, handler):
+        handler.request.close()  # las respuestas se envian a los puertos especificados
         with self.lock:
-            self.videos = list(set(msg['videos']).union(set(self.videos)))
-            resp = []
+            if self.sinc:  # esto ocurre si un servidor caido se esta levantando
+                self.secundarios[handler.client_address] = msg['videos']
+                return
+            nuevo_videos = msg["videos"]
+            nuevo_serv = (msg["ip"], msg["puerto"])
+            resp = {nuevo_serv: []}
+            # Se arma el contenido de los mensajes de sincronizacion
             for server, videos in self.secundarios:
-                resp.append({'ip': server[0], 'puerto': server[1], 'videos': videos})
-            self.secundarios[handler.client_address] = msg['videos']
-            for v in msg['videos']:
+                resp[nuevo_serv].append({
+                    "ip": server[0], "puerto": server[1], "videos": videos
+                })
+                resp[server] = [{
+                    "ip": nuevo_serv[0], "puerto": nuevo_serv[1], "videos": nuevo_videos
+                }]
+            # Se registran los nuevos videos en el servidor central
+            self.secundarios[nuevo_serv] = nuevo_videos
+            for v in nuevo_videos:
                 if v not in self.data['videos']:
                     self.data['videos'][v] = 0
-        self.msg_send(resp, handler.request)
+        # envio de los mensajes de sincronizacion
+        for destino, contenido in resp.items():
+            msg = {"accion": "sincronizacion", "servidores": contenido}
+            socket_dest = socket.socket()
+            socket_dest.connect(destino)
+            self.msg_send(msg, socket_dest)
+            socket_dest.close()
 
     def sincronizacion(self, msg, handler):
         with self.lock:
             if self.sinc:
                 return
-            self.secundarios[handler.client_address].append(msg['video'])
-            print('Servidor %s descargo video "%s"' % (str(handler.client_address), msg['video']))
+            self.secundarios[handler.client_address].append(msg['videos'])
+            print('Servidor %s descargo videos "%s"' % (
+                str((msg["ip"], msg["puerto"])), msg['video']))
             if all(len(v) == len(self.videos) for _, v in self.secundarios) and \
                len(self.secundarios) == 3:
                 self.sinc = True
@@ -81,14 +104,14 @@ class ServidorCentral(servidorbase.ServidorBase):
 
     def command_handler(self, command, arg):
         if command.upper() == "NUMERO_DESCARGAS_VIDEO":
-            with self.data_lock:
+            with self.lock:
                 print('video|descargas')
-                for nombre, veces in self.data['videos']:
+                for nombre, veces in self.data['videos'].items():
                     print("%s|%d" % (nombre, veces))
         elif command.upper() == "VIDEOS_CLIENTE":
-            with self.data_lock:
+            with self.lock:
                 print('cliente|descargas')
-                for nombre, veces in self.data['clientes']:
+                for nombre, veces in self.data['clientes'].items():
                     print("%s|%d" % (nombre, veces))
         else:
             print("Comando no reconocido")
