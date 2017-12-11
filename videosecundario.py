@@ -114,7 +114,7 @@ def main(args):
         "--ip", "-i", action="store", help="Dirección IP donde se escuchará", default='0.0.0.0'
     )
     parser.add_argument(
-        "--puerto", "-p", action="store", help="Puerto donde se escuchará", default=50000,
+        "--puerto", "-p", action="store", help="Puerto donde se escuchará", default=None,
         type=int
     )
     parser.add_argument(
@@ -133,7 +133,8 @@ def main(args):
     if pargs.numero not in (1, 2, 3):
         print("El numero del servidor es invalido.")
         sys.exit()
-    pargs.puerto += pargs.numero
+    if pargs.puerto is None:
+        pargs.puerto = 50000 + pargs.numero
     servidor = ServidorSecundario(
         pargs.ip, pargs.puerto, pargs.ip_central, pargs.puerto_central,
         'secundario%d.json' % pargs.numero
