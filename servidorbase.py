@@ -48,6 +48,7 @@ class ServidorBase(metaclass=abc.ABCMeta):
         except FileNotFoundError:
             self.data = self.DEFAULT_DATA
 
+    @classmethod
     def msg_send(self, msg, socket):
         socket.sendall((json.dumps(msg) + '\n').encode())
 

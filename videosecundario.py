@@ -16,6 +16,7 @@ class ServidorSecundario(servidorbase.ServidorBase):
             if i in data_file:
                 self.video_folder = "./videos" + i
                 break
+        os.makedir(self.video_folder, exists_ok=True)
         self.DEFAULT_DATA = {v: 0 for v in os.listdir(self.video_folder)}
         super().__init__(ip, puerto, data_file)
         self.ip_c = ip_central
