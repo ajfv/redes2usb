@@ -56,6 +56,7 @@ class ServidorSecundario(servidorbase.ServidorBase):
             operacion(msg, handler)
 
     def sincronizacion(self, msg, handler):
+        "Maneja orden de sincronizacion. Se descargan todos los videos necesarios y se notifica"
         for s in msg['servidores']:
             with self.lock:
                 videos = set(s['videos']).difference(set(self.data.keys()))
@@ -79,12 +80,15 @@ class ServidorSecundario(servidorbase.ServidorBase):
                 socket_central.close()
 
     def descarga(self, msg, handler):
+        "Maneja descargas, tanto para sincronizacion como para el cliente"
         video = msg["video"]
         if "parte" in msg:  # descarga por partes desde el cliente
+            # se calcula el trozo a descargar
             path = os.path.join(self.video_folder, video)
             tam = os.path.getsize(path)
             comienzo = (tam // 3)*msg["parte"]
             por_enviar = tam // 3 + (tam % 3 if msg["parte"] == 2 else 0)
+            # se envia el trozo al cliente
             with open(path, mode='rb') as f:
                 f.seek(comienzo, 0)
                 with self.descargando_lock:

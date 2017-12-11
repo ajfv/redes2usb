@@ -13,10 +13,10 @@ class ServidorCentral(servidorbase.ServidorBase):
     def __init__(self, *args):
         "Inicializacion del servidor central"
         super().__init__(*args)
-        self.secundarios = {}
-        self.lock = threading.Lock()
-        self.sinc = False
-        self.videos = set()
+        self.secundarios = {}           # Datos no persistentes (informacion de los secundarios)
+        self.lock = threading.Lock()    # mutex para proteger atributos
+        self.sinc = False               # marca si ya se hizo la sincronizacion o no
+        self.videos = set()             # Conjunto de videos disponibles
         self.MENSAJES = {  # mensajes y sus respectivos manejadores
             'inscripcion': self.inscripcion,
             'sincronizacion': self.sincronizacion,
@@ -39,7 +39,8 @@ class ServidorCentral(servidorbase.ServidorBase):
             operacion(msg, handler)
 
     def inscripcion(self, msg, handler):
-        handler.request.close()  # las respuestas se envian a los puertos especificados
+        "Manejador de las inscripciones. Guarda los nuevos datos y envia mensajes de sincronizacion"
+        handler.request.close()
         with self.lock:
             if self.sinc:  # esto ocurre si un servidor caido se esta levantando
                 self.secundarios[(handler.client_address[0], msg['puerto'])] = msg['videos']
@@ -74,6 +75,10 @@ class ServidorCentral(servidorbase.ServidorBase):
             socket_dest.close()
 
     def sincronizacion(self, msg, handler):
+        """ Manejador de notificaciones de sincronizacion.
+            Actualiza los datos sobre los servidores secundarios e identifica si la sincronizacion
+            ya termino
+        """
         with self.lock:
             if self.sinc:
                 return
@@ -86,6 +91,9 @@ class ServidorCentral(servidorbase.ServidorBase):
                 print("Sincronizacion completa")
 
     def listado(self, msg, handler):
+        """ Manejador de peticion de lista de videos.
+            Responde con la lista vacia si aun no ha terminado la sincronizacion
+        """
         with self.lock:
             sinc = self.sinc
         if not sinc:
@@ -95,6 +103,10 @@ class ServidorCentral(servidorbase.ServidorBase):
             self.msg_send(list(self.videos), handler.request)
 
     def descarga(self, msg, handler):
+        """ Manejador de peticion de descarga.
+            Responde si el video existe, no existe o aun no ha culminado la sincronizacion.
+            Si existe, se envia la lista de servidores secundarios activos.
+        """
         with self.lock:
             sinc = self.sinc
             encontrado = msg['video'] in self.videos
@@ -112,6 +124,7 @@ class ServidorCentral(servidorbase.ServidorBase):
         self.msg_send(resp, handler.request)
 
     def completado(self, msg, handler):
+        "Manejador de notificacion de descarga completada. Actualiza las estadisticas"
         with self.lock:
             self.data['videos'][msg['video']] += 1
             if msg['nombre'] in self.data['clientes']:
@@ -121,11 +134,13 @@ class ServidorCentral(servidorbase.ServidorBase):
         print("El cliente %s descargo el video %s" % (msg['nombre'], msg['video']))
 
     def caido(self, msg, handler):
+        "Manejador de notificacion de servidor caido. Actualiza lista de servidores secundarios"
         with self.lock:
             del self.secundarios[(msg["ip"], msg['puerto'])]
         print("Se perdio conexion con el servidor secundario %s:%d" % (msg["ip"], msg["puerto"]))
 
     def command_handler(self, command, arg):
+        "Ejecucion de comandos"
         if command.upper() == "NUMERO_DESCARGAS_VIDEO":
             with self.lock:
                 print('video|descargas')

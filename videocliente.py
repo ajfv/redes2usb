@@ -12,7 +12,10 @@ import tempfile
 
 
 class Cliente():
+    "Clase para el cliente"
+
     def __init__(self, ip_central, puerto_central):
+        "Constructor de la clase"
         self.ip_central = ip_central
         self.puerto_central = puerto_central
         self._nombre = None
@@ -20,6 +23,7 @@ class Cliente():
 
     @property
     def nombre(self):
+        "Propiedad nombre, protegida por un lock"
         with self.nombre_lock:
             return self._nombre
 
@@ -29,6 +33,7 @@ class Cliente():
             self._nombre = val
 
     def run(self):
+        "Lector de comandos"
         def signal_handler(signal, frame):
             sys.exit(0)
         signal.signal(signal.SIGINT, signal_handler)
@@ -45,6 +50,7 @@ class Cliente():
                 self.command_handler(splitted[0], splitted[1])
 
     def caido(self, servidor):
+        "Metodo que notifica al servidor central de un servidor secundario caido"
         try:
             central = socket.socket()
             central.connect((self.ip_central, self.puerto_central))
@@ -59,6 +65,7 @@ class Cliente():
             return "Se le notifico al servidor central"
 
     def command_handler(self, command, arg):
+        "Ejecucion de comandos"
         if command.upper() == "INSCRIBIR":
             if arg is None:
                 print("Falta parametro: INSCRIBIR <nombre>")
@@ -79,6 +86,7 @@ class Cliente():
             print("Comando no reconocido: {}".format(command))
 
     def msg_read(self, socket):
+        "Metodo para leer un mensaje JSON de un socket"
         buffer = bytearray()
         data = socket.recv(1024)
         while len(data) > 0:
@@ -102,6 +110,9 @@ class Cliente():
             print("No se pudo establecer conexión con el servidor central")
 
     def _video(self, nombre):
+        """ Descarga de video. Si el video existe, se descarga en otro hilo.
+            nombre: nombre del video
+        """
         if self.nombre is None:
             print("Debes inscribir un nombre primero")
             return
@@ -127,9 +138,15 @@ class Cliente():
             descarga.start()
 
     def _descarga(self, video, servidores):
+        """ Descarga desde secundarios.
+            Se lanza un hilo encargado de cada trozo, luego se recolectan los resultados.
+            Si la descarga de los trozos fue exitosa, se crea el archivo final y se notifica.
+            video: nombre del video
+            servidores: servidores secundarios que se recibieron del principal
+        """
         q = queue.Queue()
         threads = []
-        for parte in [0, 1, 2]:
+        for parte in [0, 1, 2]:  # se lanzan los hilos para los trozos
             t = threading.Thread(
                 target=self._descarga_parte, args=(q, parte, video, servidores)
             )
@@ -138,18 +155,18 @@ class Cliente():
         for t in threads:
             t.join()
         resultado = []
-        for i in range(3):
+        for i in range(3):  # se recolectan los resultados
             resultado.append(q.get())
             if not resultado[-1][0]:
                 print("Fallo la descarga del video %s" % video)
                 return
         resultado.sort(key=lambda x: x[1])
-        with open(video, mode='wb') as f:
+        with open(video, mode='wb') as f:  # creacion del archivo final
             for a, b, temp in resultado:
                 shutil.copyfileobj(temp, f)
                 temp.close()
         print("Se completo la descarga del video %s" % video)
-        try:
+        try:   # Notificacion para el servidor central
             central = socket.socket()
             central.connect((self.ip_central, self.puerto_central))
             ServidorBase.msg_send(
@@ -160,6 +177,7 @@ class Cliente():
             print("No pudo notificarse al servidor central")
 
     def _descarga_parte(self, salida, parte, video, servidores):
+        "Descarga de una parte. Se intentan todos los servidores hasta que uno funciona, o se falla"
         for i in [0, 1, 2]:
             # Primero se establece la conexion
             servidor = servidores[(parte + i) % 3]
