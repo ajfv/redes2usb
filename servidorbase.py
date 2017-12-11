@@ -72,7 +72,11 @@ class ServidorBase(metaclass=abc.ABCMeta):
     def command_line_interface(self):
         "Método que lee instrucciones desde la línea de comandos"
         while True:
-            text = input("> ")
+            try:
+                text = input("> ")
+            except EOFError:
+                signal.pthread_kill(threading.main_thread().ident, signal.SIGTERM)
+                return
             splitted = text.split(' ')
             if len(splitted) == 1:
                 self.command_handler(splitted[0], None)

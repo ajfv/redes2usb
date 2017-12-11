@@ -32,7 +32,10 @@ class Cliente():
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
         while True:
-            text = input("> ")
+            try:
+                text = input("> ")
+            except EOFError:
+                return
             splitted = text.split(' ')
             if len(splitted) == 1:
                 self.command_handler(splitted[0], None)
